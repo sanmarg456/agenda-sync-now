@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Task } from '@/types';
 import { TaskCard } from './TaskCard';
 import { Button } from '@/components/ui/button';
-import { Plus, Filter } from 'lucide-react';
+import { Plus, Filter, Check } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface TaskListProps {
@@ -94,7 +94,7 @@ export function TaskList({ tasks, onComplete, onEdit, onAdd }: TaskListProps) {
         {filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="rounded-full bg-muted p-3">
-              <CheckSquare className="h-6 w-6 text-muted-foreground" />
+              <Check className="h-6 w-6 text-muted-foreground" />
             </div>
             <h3 className="mt-4 text-lg font-medium">No tasks found</h3>
             <p className="mt-2 text-sm text-muted-foreground">
