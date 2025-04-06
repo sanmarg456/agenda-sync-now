@@ -1,140 +1,200 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DailyPlanner } from '@/components/planner/DailyPlanner';
 import { useToast } from '@/hooks/use-toast';
-import { Task, CalendarEvent } from '@/types';
-import { v4 as uuidv4 } from 'uuid';
-import { addDays } from 'date-fns';
-
-// Sample data
-const initialTasks: Task[] = [
-  {
-    id: uuidv4(),
-    title: 'Review project documentation',
-    description: 'Go through recent changes and leave comments',
-    category: 'work',
-    priority: 'high',
-    dueDate: new Date(),
-    completed: false,
-    duration: 45,
-  },
-  {
-    id: uuidv4(),
-    title: 'Call insurance company',
-    description: 'Discuss policy renewal options',
-    category: 'personal',
-    priority: 'medium',
-    dueDate: new Date(),
-    completed: false,
-    duration: 20,
-  },
-  {
-    id: uuidv4(),
-    title: 'Prepare presentation slides',
-    description: 'Create slides for tomorrow\'s meeting',
-    category: 'work',
-    priority: 'high',
-    dueDate: new Date(),
-    completed: false,
-    duration: 60,
-  },
-];
-
-const initialEvents: CalendarEvent[] = [
-  {
-    id: uuidv4(),
-    title: 'Team Standup',
-    start: new Date(new Date().setHours(9, 30, 0, 0)),
-    end: new Date(new Date().setHours(10, 0, 0, 0)),
-    notes: 'Daily team check-in',
-  },
-];
+import { Task, CalendarEvent, TimeBlock } from '@/types';
+import { addDays, startOfDay, endOfDay } from 'date-fns';
+import { taskService } from '@/services/taskService';
+import { calendarService } from '@/services/calendarService';
+import { plannerService } from '@/services/plannerService';
 
 export default function PlannerPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const today = new Date();
+      const [tasksData, eventsData] = await Promise.all([
+        taskService.getTasks(),
+        calendarService.getEvents(startOfDay(today), endOfDay(today))
+      ]);
+      setTasks(tasksData);
+      setEvents(eventsData);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load planner data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
-  const handleAcceptTask = (taskId: string, start: Date, end: Date) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        return {
-          ...task,
-          timeBlock: { start, end },
-        };
+  const handleAcceptTask = async (taskId: string, start: Date, end: Date) => {
+    try {
+      // Create a time block for the task
+      const timeBlock: Omit<TimeBlock, 'id'> = {
+        start,
+        end,
+        taskId
+      };
+
+      // Get or create daily plan
+      const today = new Date();
+      let dailyPlan = await plannerService.getDailyPlan(today);
+      if (!dailyPlan) {
+        dailyPlan = await plannerService.createDailyPlan(today);
       }
-      return task;
-    }));
-    
-    toast({
-      title: "Task scheduled",
-      description: "The task has been added to your calendar",
-    });
+
+      // Create time block
+      await plannerService.createTimeBlock(dailyPlan.id, timeBlock);
+
+      // Update task with time block
+      const updatedTask = await taskService.updateTask(taskId, {
+        timeBlock: { start, end }
+      });
+
+      setTasks(prev => prev.map(task => {
+        if (task.id === taskId) {
+          return updatedTask;
+        }
+        return task;
+      }));
+      
+      toast({
+        title: "Task scheduled",
+        description: "The task has been added to your calendar",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to schedule task. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
   
-  const handleSnoozeTask = (taskId: string) => {
-    setTasks(prev => prev.map(task => {
-      if (task.id === taskId) {
-        return {
-          ...task,
-          dueDate: addDays(new Date(), 1), // Snooze to tomorrow
-        };
+  const handleSnoozeTask = async (taskId: string) => {
+    try {
+      const newDueDate = addDays(new Date(), 1);
+      const updatedTask = await taskService.updateTask(taskId, {
+        dueDate: newDueDate
+      });
+
+      setTasks(prev => prev.map(task => {
+        if (task.id === taskId) {
+          return updatedTask;
+        }
+        return task;
+      }));
+      
+      toast({
+        title: "Task snoozed",
+        description: "The task has been snoozed until tomorrow",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to snooze task. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await taskService.deleteTask(taskId);
+      setTasks(prev => prev.filter(task => task.id !== taskId));
+      
+      toast({
+        title: "Task deleted",
+        description: "The task has been removed from your list",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete task. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+  
+  const handleGeneratePlan = async () => {
+    try {
+      const today = new Date();
+      let dailyPlan = await plannerService.getDailyPlan(today);
+      if (!dailyPlan) {
+        dailyPlan = await plannerService.createDailyPlan(today);
       }
-      return task;
-    }));
-    
-    toast({
-      title: "Task snoozed",
-      description: "The task has been snoozed until tomorrow",
-    });
-  };
-  
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(prev => prev.filter(task => task.id !== taskId));
-    
-    toast({
-      title: "Task deleted",
-      description: "The task has been removed from your list",
-    });
-  };
-  
-  const handleGeneratePlan = () => {
-    // This would typically involve a more complex algorithm
-    // For demonstration, we'll just generate time blocks for tasks without them
-    let currentStartTime = new Date();
-    currentStartTime.setHours(9, 0, 0, 0); // Start at 9 AM
-    
-    const updatedTasks = tasks.map(task => {
-      if (!task.completed && !task.timeBlock) {
+
+      // Get unscheduled tasks
+      const unscheduledTasks = tasks.filter(task => !task.completed && !task.timeBlock);
+      
+      // Generate time blocks
+      let currentStartTime = new Date();
+      currentStartTime.setHours(9, 0, 0, 0); // Start at 9 AM
+      
+      for (const task of unscheduledTasks) {
         const newStartTime = new Date(currentStartTime);
         const newEndTime = new Date(newStartTime);
         newEndTime.setMinutes(newStartTime.getMinutes() + (task.duration || 30));
         
+        // Create time block
+        await plannerService.createTimeBlock(dailyPlan.id, {
+          start: newStartTime,
+          end: newEndTime,
+          taskId: task.id
+        });
+
+        // Update task
+        await taskService.updateTask(task.id, {
+          timeBlock: {
+            start: newStartTime,
+            end: newEndTime
+          }
+        });
+
         // Update start time for next task
         currentStartTime = new Date(newEndTime);
         currentStartTime.setMinutes(currentStartTime.getMinutes() + 15); // 15 min break
-        
-        return {
-          ...task,
-          timeBlock: {
-            start: newStartTime,
-            end: newEndTime,
-          },
-        };
       }
-      return task;
-    });
-    
-    setTasks(updatedTasks);
-    
-    toast({
-      title: "Daily plan generated",
-      description: "Your tasks have been scheduled for today",
-    });
+
+      // Reload data to get updated tasks
+      await loadData();
+      
+      toast({
+        title: "Daily plan generated",
+        description: "Your tasks have been scheduled for today",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate plan. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
+  
+  if (isLoading) {
+    return (
+      <div className="container mx-auto">
+        <div className="text-center">Loading planner data...</div>
+      </div>
+    );
+  }
   
   return (
     <div className="container mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Planner</h1>
+      <p>Planner view coming soon...</p>
       <DailyPlanner
         tasks={tasks}
         events={events}
