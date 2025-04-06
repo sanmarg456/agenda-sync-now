@@ -1,52 +1,52 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CalendarView } from '@/components/calendar/CalendarView';
 import { EventForm } from '@/components/calendar/EventForm';
 import { TaskForm } from '@/components/tasks/TaskForm';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Task, CalendarEvent } from '@/types';
-import { addMonths, subMonths } from 'date-fns';
-import { v4 as uuidv4 } from 'uuid';
-
-// Sample data
-const initialTasks: Task[] = [
-  {
-    id: uuidv4(),
-    title: 'Team meeting',
-    description: 'Weekly team sync',
-    category: 'work',
-    priority: 'medium',
-    dueDate: new Date(),
-    completed: false,
-    duration: 60,
-    timeBlock: {
-      start: new Date(new Date().setHours(10, 0, 0, 0)),
-      end: new Date(new Date().setHours(11, 0, 0, 0)),
-    }
-  },
-];
-
-const initialEvents: CalendarEvent[] = [
-  {
-    id: uuidv4(),
-    title: 'Client Presentation',
-    start: new Date(new Date().setHours(14, 0, 0, 0)),
-    end: new Date(new Date().setHours(15, 30, 0, 0)),
-    notes: 'Present the new project proposal to the client',
-  },
-];
+import { addMonths, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { taskService } from '@/services/taskService';
+import { calendarService } from '@/services/calendarService';
 
 type DialogType = 'task' | 'event' | null;
 
 export default function CalendarPage() {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dialogType, setDialogType] = useState<DialogType>(null);
   const [currentTask, setCurrentTask] = useState<Task | undefined>(undefined);
   const [currentEvent, setCurrentEvent] = useState<CalendarEvent | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+
+  useEffect(() => {
+    loadData();
+  }, [currentDate]);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [tasksData, eventsData] = await Promise.all([
+        taskService.getTasks(),
+        calendarService.getEvents(
+          startOfMonth(currentDate),
+          endOfMonth(currentDate)
+        )
+      ]);
+      setTasks(tasksData);
+      setEvents(eventsData);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to load calendar data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   const handlePreviousMonth = () => {
     setCurrentDate(prev => subMonths(prev, 1));
@@ -76,74 +76,99 @@ export default function CalendarPage() {
     setDialogType('event');
   };
   
-  const handleSubmitTask = (data: Partial<Task>) => {
-    if (data.id) {
-      // Update existing task
-      setTasks(prev => prev.map(task => {
-        if (task.id === data.id) {
-          return { ...task, ...data };
-        }
-        return task;
-      }));
+  const handleSubmitTask = async (data: Partial<Task>) => {
+    try {
+      if (data.id) {
+        // Update existing task
+        const updatedTask = await taskService.updateTask(data.id, data);
+        setTasks(prev => prev.map(task => {
+          if (task.id === data.id) {
+            return updatedTask;
+          }
+          return task;
+        }));
+        
+        toast({
+          title: "Task updated",
+          description: "Your task has been updated successfully",
+        });
+      } else {
+        // Create new task
+        const newTask = await taskService.createTask({
+          ...data as Omit<Task, 'id'>,
+          completed: false,
+          subtasks: [],
+        });
+        
+        setTasks(prev => [...prev, newTask]);
+        
+        toast({
+          title: "Task created",
+          description: "Your new task has been created successfully",
+        });
+      }
       
+      setDialogType(null);
+    } catch (error) {
       toast({
-        title: "Task updated",
-        description: "Your task has been updated successfully",
-      });
-    } else {
-      // Create new task
-      const newTask: Task = {
-        ...data as Omit<Task, 'id'>,
-        id: uuidv4(),
-        completed: false,
-        subtasks: [],
-      };
-      
-      setTasks(prev => [...prev, newTask]);
-      
-      toast({
-        title: "Task created",
-        description: "Your new task has been created successfully",
+        title: "Error",
+        description: "Failed to save task. Please try again.",
+        variant: "destructive",
       });
     }
-    
-    setDialogType(null);
   };
   
-  const handleSubmitEvent = (data: Partial<CalendarEvent>) => {
-    if (data.id) {
-      // Update existing event
-      setEvents(prev => prev.map(event => {
-        if (event.id === data.id) {
-          return { ...event, ...data };
-        }
-        return event;
-      }));
+  const handleSubmitEvent = async (data: Partial<CalendarEvent>) => {
+    try {
+      if (data.id) {
+        // Update existing event
+        const updatedEvent = await calendarService.updateEvent(data.id, data);
+        setEvents(prev => prev.map(event => {
+          if (event.id === data.id) {
+            return updatedEvent;
+          }
+          return event;
+        }));
+        
+        toast({
+          title: "Event updated",
+          description: "Your event has been updated successfully",
+        });
+      } else {
+        // Create new event
+        const newEvent = await calendarService.createEvent(data as Omit<CalendarEvent, 'id'>);
+        
+        setEvents(prev => [...prev, newEvent]);
+        
+        toast({
+          title: "Event created",
+          description: "Your new event has been created successfully",
+        });
+      }
       
+      setDialogType(null);
+    } catch (error) {
       toast({
-        title: "Event updated",
-        description: "Your event has been updated successfully",
-      });
-    } else {
-      // Create new event
-      const newEvent: CalendarEvent = {
-        ...data as Omit<CalendarEvent, 'id'>,
-        id: uuidv4(),
-      };
-      
-      setEvents(prev => [...prev, newEvent]);
-      
-      toast({
-        title: "Event created",
-        description: "Your new event has been created successfully",
+        title: "Error",
+        description: "Failed to save event. Please try again.",
+        variant: "destructive",
       });
     }
-    
-    setDialogType(null);
   };
+  
+  if (isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">Loading calendar data...</div>
+      </div>
+    );
+  }
   
   return (
     <div className="h-full">
+      <h1 className="text-2xl font-bold mb-4">Calendar</h1>
+      <p>Calendar view coming soon...</p>
+      
       <CalendarView
         tasks={tasks}
         events={events}

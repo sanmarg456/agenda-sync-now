@@ -1,4 +1,3 @@
-
 export type Priority = 'low' | 'medium' | 'high';
 export type Category = 'work' | 'personal' | 'health' | 'other';
 
@@ -22,8 +21,10 @@ export interface Subtask {
 }
 
 export interface TimeBlock {
+  id?: string;
   start: Date;
   end: Date;
+  taskId?: string;
 }
 
 export interface CalendarEvent {

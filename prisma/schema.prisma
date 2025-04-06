@@ -1,0 +1,106 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  WORK
+  PERSONAL
+  SHOPPING
+  HEALTH
+  OTHER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id          String      @id @default(cuid())
+  title       String
+  description String?
+  category    Category
+  priority    Priority
+  dueDate     DateTime?
+  completed   Boolean     @default(false)
+  duration    Int?
+  timeBlock   String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  completed   Boolean    @default(false)
+  duration    Int
+  timeBlock   Json?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  userId      String     @map("user_id")
+  subtasks    Subtask[]
+  events      Event[]
+
+  @@map("tasks")
+}
+
+model Subtask {
+  id        String   @id @default(uuid())
+  title     String
+  completed Boolean  @default(false)
+  taskId    String   @map("task_id")
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("subtasks")
+}
+
+model Event {
+  id        String   @id @default(uuid())
+  title     String
+  start     DateTime
+  end       DateTime
+  notes     String?
+  taskId    String?  @map("task_id")
+  task      Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("calendar_events")
+}
+
+model DailyPlan {
+  id        String     @id @default(uuid())
+  date      DateTime
+  userId    String     @map("user_id")
+  timeBlocks TimeBlock[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@unique([date, userId])
+  @@map("daily_plans")
+}
+
+model TimeBlock {
+  id          String    @id @default(uuid())
+  start       DateTime
+  end         DateTime
+  taskId      String?   @map("task_id")
+  dailyPlanId String    @map("daily_plan_id")
+  dailyPlan   DailyPlan @relation(fields: [dailyPlanId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("time_blocks")
+}
